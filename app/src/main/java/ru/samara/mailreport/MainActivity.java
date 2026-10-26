@@ -63,7 +63,7 @@ public class MainActivity extends Activity {
         header.setTextSize(22);
         layout.addView(header);
         TextView hint=new TextView(this);
-        hint.setText("Два ящика Mail.ru с раздельными браузерными сессиями. Кнопка «Проверка работы почты» открывает сайт для ручного входа, в том числе при запросе кода или капчи. Для автоматического отчёта о письмах используется IMAP (imap.mail.ru:993, SSL/TLS), которому нужен отдельный пароль внешнего приложения Mail.ru. Обычный пароль сайта здесь вводить не нужно.");
+        hint.setText("Два ящика Mail.ru. Кнопка «Проверка работы почты» открывает официальный сайт в установленном браузере для ручного входа, включая 2FA и капчу. Вход сохраняется самим браузером, но браузерная сессия не предоставляет приложению доступ к письмам. Для автоматического отчёта нужен отдельный пароль IMAP (imap.mail.ru:993, SSL/TLS).");
         hint.setPadding(0,14,0,18);
         layout.addView(hint);
 
@@ -143,8 +143,7 @@ public class MainActivity extends Activity {
         browser.setOnClickListener(v->{
             try{
                 saveConfiguration();
-                Intent intent=new Intent(this,index==0?MailBrowserOneActivity.class:MailBrowserTwoActivity.class);
-                intent.putExtra("mail_address",accounts.get(index).login);
+                Intent intent=new Intent(Intent.ACTION_VIEW,Uri.parse(WEBMAIL_URL));
                 startActivity(intent);
             }catch(Exception e){
                 Toast.makeText(this,"Не удалось открыть почту: "+e.getMessage(),Toast.LENGTH_LONG).show();

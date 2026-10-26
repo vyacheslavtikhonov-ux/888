@@ -32,7 +32,7 @@ final class MailReader {
             Message[] messages=folder.search(new AndTerm(
                 new ReceivedDateTerm(ComparisonTerm.GE,start.getTime()),
                 new ReceivedDateTerm(ComparisonTerm.LT,end.getTime())));
-            int limit=Math.min(messages.length,1000);
+            int limit=messages.length;
             for(int i=0;i<limit;i++){
                 Message m=messages[i];String sender=m.getFrom()==null?"Неизвестно":m.getFrom()[0].toString();
                 String subject=m.getSubject()==null?"(без темы)":m.getSubject();

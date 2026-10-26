@@ -37,6 +37,75 @@ final class ReportEngine {
         while(m.find() && a.size()<12){String s=m.group().replaceAll("\\s+"," ").trim();if(!a.contains(s))a.add(s);}
         return a.isEmpty()?"Адрес не распознан":String.join("; ",a);
     }
+
+    static String build(Date day, ArrayList<Item> emails,
+        java.util.List<SpreadsheetAttachmentReader.Operational> operations,
+        java.util.List<SpreadsheetAttachmentReader.Incident> incidents,
+        ArrayList<String> errors){
+        StringBuilder out=new StringBuilder("ОПЕРАТИВНАЯ СВОДКА\n");
+        out.append("Дата получения писем: ").append(new SimpleDateFormat("dd.MM.yyyy",new Locale("ru")).format(day))
+           .append("\nПроверено писем: ").append(emails.size())
+           .append("\nЗаписей об отключениях: ").append(operations.size())
+           .append("\nИнцидентов: ").append(incidents.size()).append("\n");
+        java.util.HashSet<String> seen=new java.util.HashSet<>();
+        for(boolean samara:new boolean[]{true,false}){
+            out.append(samara?"\n━━━━ ГОРОД САМАРА ━━━━\n":"\n━━━━ ДРУГИЕ НАСЕЛЁННЫЕ ПУНКТЫ ━━━━\n");
+            java.util.LinkedHashMap<String,java.util.ArrayList<SpreadsheetAttachmentReader.Operational>> groups=new java.util.LinkedHashMap<>();
+            for(SpreadsheetAttachmentReader.Operational o:operations){
+                if(SpreadsheetAttachmentReader.isSamara(o.municipality)!=samara)continue;
+                String key=o.source+"|"+o.service+"|"+o.address+"|"+o.reason;
+                if(!seen.add(key))continue;
+                groups.computeIfAbsent(o.service,k->new java.util.ArrayList<>()).add(o);
+            }
+            out.append("КОММУНАЛЬНЫЕ УСЛУГИ\n");
+            if(groups.isEmpty())out.append("Отключений в приложенных таблицах нет.\n");
+            for(java.util.Map.Entry<String,java.util.ArrayList<SpreadsheetAttachmentReader.Operational>> group:groups.entrySet()){
+                int homes=0,people=0,missingHomes=0,missingPeople=0;
+                for(SpreadsheetAttachmentReader.Operational o:group.getValue()){
+                    if(o.houses==null)missingHomes++;else homes+=o.houses;
+                    if(o.people==null)missingPeople++;else people+=o.people;
+                }
+                out.append("\n").append(group.getKey()).append(" — записей: ").append(group.getValue().size())
+                   .append(", домов: ").append(homes).append(missingHomes>0?" (без данных: "+missingHomes+")":"")
+                   .append(", человек: ").append(people).append(missingPeople>0?" (без данных: "+missingPeople+")":"").append("\n");
+                for(SpreadsheetAttachmentReader.Operational o:group.getValue()){
+                    out.append("• ").append(o.address).append("\n")
+                       .append("  Территория: ").append(o.municipality).append(", ").append(o.district).append("\n")
+                       .append("  Причина: ").append(empty(o.reason)).append("\n")
+                       .append("  Домов: ").append(o.houses==null?"не указано":o.houses)
+                       .append("; человек: ").append(o.people==null?"не указано":o.people).append("\n")
+                       .append("  Перерыв: ").append(empty(o.duration)).append("; статус: ").append(empty(o.status)).append("\n")
+                       .append("  Начало: ").append(empty(o.start)).append("; окончание: ").append(empty(o.end)).append("\n")
+                       .append("  Предприятие: ").append(empty(o.company)).append("; файл: ").append(o.source).append("\n");
+                }
+            }
+            out.append("\nИНЦИДЕНТЫ\n");
+            int index=0;
+            for(SpreadsheetAttachmentReader.Incident o:incidents){
+                if(SpreadsheetAttachmentReader.isSamara(o.municipality)!=samara)continue;
+                String key="incident|"+o.source+"|"+o.municipality+"|"+o.address+"|"+o.timestamp;
+                if(!seen.add(key))continue;
+                out.append(++index).append(". ").append(o.municipality).append(", ").append(empty(o.address))
+                   .append("\n  Дата / заявка: ").append(empty(o.timestamp))
+                   .append("\n  Причина и описание: ").append(empty(o.reason))
+                   .append("\n  Характеристика объекта: ").append(empty(o.characteristic))
+                   .append("\n  Принятые меры: ").append(empty(o.measures))
+                   .append("\n  Подразделение: ").append(empty(o.unit))
+                   .append("\n  Файл: ").append(o.source).append("\n");
+            }
+            if(index==0)out.append("Инцидентов в приложенных таблицах нет.\n");
+        }
+        out.append("\n━━━━ ДОПОЛНИТЕЛЬНО: ТЕКСТ ПИСЕМ ━━━━\n");
+        out.append(build(day,emails,new ArrayList<String>()));
+        if(!errors.isEmpty()){
+            out.append("\n\nОШИБКИ ЧТЕНИЯ ВЛОЖЕНИЙ И ПОЧТЫ\n");
+            for(String e:errors)out.append("• ").append(e).append("\n");
+        }
+        out.append("\nПримечание: даты отключений могут отличаться от дат писем; указанное в таблице время окончания не подтверждает фактическое восстановление. Пропущенные числовые значения не приравниваются к нулю.");
+        return out.toString();
+    }
+    private static String empty(String value){return value==null||value.trim().isEmpty()?"не указано":value.trim();}
+
     static String build(Date day, ArrayList<Item> emails, ArrayList<String> errors){
         SimpleDateFormat d=new SimpleDateFormat("dd.MM.yyyy",new Locale("ru"));
         SimpleDateFormat time=new SimpleDateFormat("dd.MM.yyyy HH:mm",new Locale("ru"));

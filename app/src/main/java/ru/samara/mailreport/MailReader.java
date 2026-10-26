@@ -16,10 +16,13 @@ import javax.mail.search.ReceivedDateTerm;
 final class MailReader {
     static final class Attachment {
         final java.io.File file;
-        final String filename,mailbox,subject;
-        final boolean analyzed;
-        Attachment(java.io.File f,String name,String from,String sub,boolean ok){
-            file=f;filename=name;mailbox=from;subject=sub;analyzed=ok;
+        final String filename,mailbox,subject,analysis;
+        final boolean analyzed,excel;
+        final int outages,incidents;
+        Attachment(java.io.File f,String name,String from,String sub,boolean excelFile,
+                   boolean ok,int outagesCount,int incidentsCount,String detail){
+            file=f;filename=name;mailbox=from;subject=sub;
+            excel=excelFile;analyzed=ok;outages=outagesCount;incidents=incidentsCount;analysis=detail;
         }
     }
 
@@ -57,7 +60,7 @@ final class MailReader {
                 if(body.length()>30000)body=body.substring(0,30000);
                 list.add(new ReportEngine.Item(account.title,subject,body,sender,m.getReceivedDate()));
                 try{
-                    collectAttachments(m,0,account.title,subject,operations,incidents,warnings,attachmentDirectory,attachments);
+                    collectAttachments(m,0,account.title,subject,day,operations,incidents,warnings,attachmentDirectory,attachments);
                 }catch(Exception e){warnings.add(account.title+": ошибка обхода вложений письма «"+subject+"» ("+e.getClass().getSimpleName()+")");}
             }
         } finally {if(folder!=null&&folder.isOpen())try{folder.close(false);}catch(Exception ignored){}
@@ -84,7 +87,7 @@ final class MailReader {
         }
         return "";
     }
-    private static void collectAttachments(Part part,int depth,String mailbox,String subject,
+    private static void collectAttachments(Part part,int depth,String mailbox,String subject,Date day,
         ArrayList<SpreadsheetAttachmentReader.Operational> operations,
         ArrayList<SpreadsheetAttachmentReader.Incident> incidents,
         ArrayList<String> warnings,
@@ -118,6 +121,8 @@ final class MailReader {
                     }
                 }catch(Exception e){if(destination!=null)destination.delete();throw e;}
                 boolean analyzed=false;
+                int outages=0,incidentsCount=0;
+                String analysis="Анализ для этого формата не предусмотрен. Автоматически обрабатываются XLSX-файлы двух поддерживаемых шаблонов.";
                 if(xlsx){
                     byte[] bytes=destination!=null?java.nio.file.Files.readAllBytes(destination.toPath()):memory.toByteArray();
                     try{
@@ -125,21 +130,31 @@ final class MailReader {
                         operations.addAll(parsed.operations);
                         incidents.addAll(parsed.incidents);
                         for(String message:parsed.warnings)warnings.add(mailbox+": "+message);
-                        analyzed=parsed.warnings.isEmpty();
-                    }catch(Exception e){warnings.add(mailbox+": не удалось разобрать «"+original+"»: "+e.getClass().getSimpleName());}
+                        outages=parsed.operations.size();
+                        incidentsCount=parsed.incidents.size();
+                        analyzed=outages>0||incidentsCount>0;
+                        analysis="Файл: "+original+"\nЯщик: "+mailbox+"\nТема письма: "+subject+"\n\n"+
+                            ReportEngine.build(day,new ArrayList<ReportEngine.Item>(),parsed.operations,parsed.incidents,
+                                new ArrayList<String>(parsed.warnings));
+                    }catch(Exception e){
+                        String reason="Не удалось разобрать XLSX «"+original+"»: "+e.getClass().getSimpleName();
+                        warnings.add(mailbox+": "+reason);
+                        analysis=reason+"\nОткройте исходный файл и проверьте формат.";
+                    }
                 }else{
                     warnings.add(mailbox+": вложение «"+original+"» сохранено для открытия, но автоматический разбор этого формата пока не поддерживается");
                 }
-                if(destination!=null)attachments.add(new Attachment(destination,original,mailbox,subject,analyzed));
+                if(destination!=null)attachments.add(new Attachment(destination,original,mailbox,subject,
+                    xlsx,analyzed,outages,incidentsCount,analysis));
             }catch(Exception e){warnings.add(mailbox+": ошибка сохранения вложения «"+filename+"»: "+e.getClass().getSimpleName());}
             return;
         }
         if(part.isMimeType("multipart/*")){
             Multipart multipart=(Multipart)part.getContent();
             for(int i=0;i<multipart.getCount();i++)
-                collectAttachments(multipart.getBodyPart(i),depth+1,mailbox,subject,operations,incidents,warnings,directory,attachments);
+                collectAttachments(multipart.getBodyPart(i),depth+1,mailbox,subject,day,operations,incidents,warnings,directory,attachments);
         }else if(part.isMimeType("message/rfc822")&&part.getContent() instanceof Part){
-            collectAttachments((Part)part.getContent(),depth+1,mailbox,subject,operations,incidents,warnings,directory,attachments);
+            collectAttachments((Part)part.getContent(),depth+1,mailbox,subject,day,operations,incidents,warnings,directory,attachments);
         }
     }
 

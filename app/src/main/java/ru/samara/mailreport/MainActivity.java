@@ -228,19 +228,21 @@ public class MainActivity extends Activity {
         Date date=selected.getTime();
         executor.execute(()->{
             ArrayList<ReportEngine.Item> all=new ArrayList<>();
+            ArrayList<SpreadsheetAttachmentReader.Operational> operations=new ArrayList<>();
+            ArrayList<SpreadsheetAttachmentReader.Incident> incidents=new ArrayList<>();
             for(AccountStore.Account a:choices){
                 runOnUiThread(()->status.setText("Проверка "+a.login+"..."));
-                try{all.addAll(MailReader.fetch(a,date));}
+                try{all.addAll(MailReader.fetch(a,date,operations,incidents,errors));}
                 catch(javax.mail.AuthenticationFailedException e){
                     errors.add(a.login+": ошибка авторизации. Требуется пароль внешнего приложения.");
                 }
                 catch(Exception e){errors.add(a.login+": ошибка ("+e.getClass().getSimpleName()+")");}
             }
-            String result=ReportEngine.build(date,all,errors);
+            String result=ReportEngine.build(date,all,operations,incidents,errors);
             runOnUiThread(()->{
                 lastReport=result;
                 report.setText(result);
-                status.setText("Готово. Проверено писем: "+all.size()+"; проблем: "+errors.size());
+                status.setText("Готово. Писем: "+all.size()+"; отключений: "+operations.size()+"; инцидентов: "+incidents.size()+"; проблем: "+errors.size());
                 run.setEnabled(true);test.setEnabled(true);share.setEnabled(true);
             });
         });

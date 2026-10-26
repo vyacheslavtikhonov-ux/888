@@ -196,7 +196,7 @@ public class MainActivity extends Activity {
         executor.execute(()->{
             ArrayList<String> result=new ArrayList<>();
             for(AccountStore.Account a:choices){
-                try{MailReader.check(a);result.add("✓ "+a.login+": подключение работает");}
+                try{MailReader.fetch(a,selected.getTime());result.add("✓ "+a.login+": подключение работает");}
                 catch(javax.mail.AuthenticationFailedException e){result.add("✗ "+a.login+": отказ в авторизации. Используйте пароль для внешнего приложения Mail.ru.");}
                 catch(Exception e){result.add("✗ "+a.login+": ошибка соединения ("+e.getClass().getSimpleName()+")");}
             }

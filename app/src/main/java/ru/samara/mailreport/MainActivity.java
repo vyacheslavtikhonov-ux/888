@@ -1,15 +1,15 @@
 package ru.samara.mailreport;
+
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.DatePickerDialog;
 import android.content.Intent;
 import android.net.Uri;
-import android.content.SharedPreferences;
-import android.widget.CheckBox;
-import android.widget.Spinner;
-import android.widget.ArrayAdapter;
 import android.os.Bundle;
+import android.text.InputType;
+import android.content.SharedPreferences;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -22,90 +22,232 @@ import java.util.Date;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+
 public class MainActivity extends Activity {
+    private static final int SLOT_COUNT=5;
+    private static final String MAIL_HOST="imap.mail.ru";
+    private static final int MAIL_PORT=993;
+    private static final String WEBMAIL_URL="https://e.mail.ru/";
+    private static final String FIRST_ADDRESS="infoedds2@mail.ru";
     private final ExecutorService executor=Executors.newSingleThreadExecutor();
     private final Calendar selected=Calendar.getInstance();
-    private ArrayList<AccountStore.Account> accounts=new ArrayList<>();
+    private final ArrayList<AccountStore.Account> accounts=new ArrayList<>();
+    private final ArrayList<CheckBox> enabledSlots=new ArrayList<>();
+    private final ArrayList<EditText> emailFields=new ArrayList<>();
+    private final ArrayList<EditText> passwordFields=new ArrayList<>();
     private AccountStore store;
-    private TextView accountList,report,status;
-    private Button run,share,dayButton;
-    private final ArrayList<CheckBox> selectedSlots=new ArrayList<>();
-    private final ArrayList<EditText> linkSlots=new ArrayList<>();
-    private final ArrayList<Spinner> accountSlots=new ArrayList<>();
+    private TextView report,status;
+    private Button run,share,dayButton,test;
     private String lastReport="";
     private final SimpleDateFormat formatter=new SimpleDateFormat("dd.MM.yyyy",new Locale("ru"));
-    @Override public void onCreate(Bundle b){super.onCreate(b);store=new AccountStore(this);
-        try{accounts=store.read();}catch(Exception e){Toast.makeText(this,"Не удалось расшифровать сохраненные ящики",Toast.LENGTH_LONG).show();}
-        ScrollView scroll=new ScrollView(this);LinearLayout layout=new LinearLayout(this);layout.setOrientation(LinearLayout.VERTICAL);layout.setPadding(28,32,28,32);scroll.addView(layout);
-        TextView header=new TextView(this);header.setText("Самара — аварии и отключения");header.setTextSize(22);layout.addView(header);
-        TextView hint=new TextView(this);hint.setText("Пять ссылок на веб-почту и сводка за выбранную дату. Для чтения закрытых писем необходима авторизация, одних ссылок недостаточно.");hint.setPadding(0,14,0,18);layout.addView(hint);
 
-        TextView slotTitle=new TextView(this);slotTitle.setText("\n5 ссылок на веб-почту. Открытие ссылок доступно; автоматическое чтение писем по одной ссылке не поддерживается.");layout.addView(slotTitle);
-        for(int i=0;i<5;i++)addSlot(layout,i);
+    @Override public void onCreate(Bundle b){
+        super.onCreate(b);
+        store=new AccountStore(this);
+        try{accounts.addAll(store.read());}
+        catch(Exception e){Toast.makeText(this,"Не удалось прочитать сохранённые ящики",Toast.LENGTH_LONG).show();}
+        while(accounts.size()>SLOT_COUNT)accounts.remove(accounts.size()-1);
+        while(accounts.size()<SLOT_COUNT){
+            int n=accounts.size();
+            accounts.add(new AccountStore.Account("Ящик "+(n+1),MAIL_HOST,MAIL_PORT,n==0?FIRST_ADDRESS:"",""));
+        }
 
+        ScrollView scroll=new ScrollView(this);
+        LinearLayout layout=new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(28,32,28,32);
+        scroll.addView(layout);
 
-        dayButton=new Button(this);layout.addView(dayButton);updateDate();dayButton.setOnClickListener(v->new DatePickerDialog(this,(picker,y,m,d)->{
-            selected.set(y,m,d);updateDate();},selected.get(Calendar.YEAR),selected.get(Calendar.MONTH),selected.get(Calendar.DATE)).show());
-        run=new Button(this);run.setText("Сформировать отчет");layout.addView(run);run.setOnClickListener(v->loadMail());
-        status=new TextView(this);status.setPadding(0,12,0,12);layout.addView(status);
-        share=new Button(this);share.setText("Поделиться отчетом");share.setEnabled(false);layout.addView(share);share.setOnClickListener(v->shareReport());
-        report=new TextView(this);report.setTextIsSelectable(true);report.setTextSize(15);layout.addView(report);
-        setContentView(scroll);refreshAccounts();
+        TextView header=new TextView(this);
+        header.setText("Самара — почтовая сводка");
+        header.setTextSize(22);
+        layout.addView(header);
+        TextView hint=new TextView(this);
+        hint.setText("5 ящиков Mail.ru. Для отчёта выбирайте нужные ящики галочками. Сервер imap.mail.ru, порт 993, шифрование SSL/TLS уже настроены. Введите для каждого ящика только пароль для внешнего приложения Mail.ru: обычный пароль не подходит. Он хранится зашифрованным на телефоне. Ссылки открывают почту в браузере, чтение для отчёта выполняется по защищённому IMAP.");
+        hint.setPadding(0,14,0,18);
+        layout.addView(hint);
+
+        SharedPreferences prefs=getSharedPreferences("slots",MODE_PRIVATE);
+        for(int i=0;i<SLOT_COUNT;i++)addSlot(layout,i,prefs);
+
+        Button save=new Button(this);
+        save.setText("Сохранить 5 ящиков");
+        layout.addView(save);
+        save.setOnClickListener(v->{
+            try{saveConfiguration();status.setText("Настройки сохранены на телефоне.");}
+            catch(Exception e){status.setText("Ошибка сохранения: "+e.getMessage());}
+        });
+        dayButton=new Button(this);
+        layout.addView(dayButton);
+        updateDate();
+        dayButton.setOnClickListener(v->new DatePickerDialog(this,(picker,y,m,d)->{
+            selected.set(y,m,d);updateDate();
+        },selected.get(Calendar.YEAR),selected.get(Calendar.MONTH),selected.get(Calendar.DATE)).show());
+
+        test=new Button(this);
+        test.setText("Проверить подключение выбранных ящиков");
+        layout.addView(test);
+        test.setOnClickListener(v->testConnections());
+
+        run=new Button(this);
+        run.setText("Сформировать отчёт за дату");
+        layout.addView(run);
+        run.setOnClickListener(v->loadMail());
+
+        status=new TextView(this);
+        status.setPadding(0,12,0,12);
+        layout.addView(status);
+        share=new Button(this);
+        share.setText("Поделиться текстовым отчётом");
+        share.setEnabled(false);
+        layout.addView(share);
+        share.setOnClickListener(v->shareReport());
+        report=new TextView(this);
+        report.setTextIsSelectable(true);
+        report.setTextSize(15);
+        layout.addView(report);
+        setContentView(scroll);
     }
-    private void addSlot(LinearLayout parent,int index){
-        SharedPreferences sp=getSharedPreferences("slots",MODE_PRIVATE);
-        TextView t=new TextView(this);t.setText("Слот "+(index+1));parent.addView(t);
-        CheckBox check=new CheckBox(this);check.setText("Включить в отчёт");check.setChecked(sp.getBoolean("enabled"+index,true));parent.addView(check);selectedSlots.add(check);
-        EditText url=new EditText(this);url.setHint("https://mail.example.com");url.setSingleLine(true);url.setText(sp.getString("url"+index,""));parent.addView(url);linkSlots.add(url);
-        Spinner spinner=new Spinner(this);parent.addView(spinner);accountSlots.add(spinner);
-        Button open=new Button(this);open.setText("Открыть ссылку в браузере");parent.addView(open);
-        open.setOnClickListener(v->{String value=url.getText().toString().trim();try{Uri u=Uri.parse(value);if(!"https".equalsIgnoreCase(u.getScheme())||u.getHost()==null)throw new Exception("Нужна ссылка HTTPS");startActivity(new Intent(Intent.ACTION_VIEW,u));}catch(Exception e){Toast.makeText(this,"Недопустимая HTTPS-ссылка",Toast.LENGTH_LONG).show();}});
-        url.setOnFocusChangeListener((v,focused)->{if(!focused)saveSlots();});check.setOnCheckedChangeListener((v,checked)->saveSlots());
-    }
-    private void saveSlots(){SharedPreferences.Editor edit=getSharedPreferences("slots",MODE_PRIVATE).edit();for(int i=0;i<5;i++){edit.putBoolean("enabled"+i,selectedSlots.get(i).isChecked());edit.putString("url"+i,linkSlots.get(i).getText().toString().trim());edit.putInt("account"+i,accountSlots.get(i).getSelectedItemPosition());}edit.apply();}
-    private void updateSlotAccounts(){String[] names=new String[accounts.size()+1];names[0]="Не выбран (только браузер)";for(int i=0;i<accounts.size();i++)names[i+1]=accounts.get(i).title+" — "+accounts.get(i).login;
-        SharedPreferences sp=getSharedPreferences("slots",MODE_PRIVATE);for(int i=0;i<5;i++){final int index=i;Spinner spinner=accountSlots.get(i);ArrayAdapter<String> adapter=new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,names);spinner.setAdapter(adapter);spinner.setSelection(Math.min(sp.getInt("account"+i,0),names.length-1));spinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){public void onNothingSelected(android.widget.AdapterView<?> parent){}public void onItemSelected(android.widget.AdapterView<?> parent,android.view.View v,int position,long id){saveSlots();}});}
-    }
-    private void updateDate(){dayButton.setText("Дата: "+formatter.format(selected.getTime()));}
-    private void refreshAccounts(){StringBuilder s=new StringBuilder("Почтовые ящики ("+accounts.size()+"):\n");
-        for(AccountStore.Account a:accounts)s.append("• ").append(a.title).append(" — ").append(a.login).append("\n");updateSlotAccounts();}
-    private EditText field(String hint,String preset,LinearLayout parent){EditText e=new EditText(this);e.setSingleLine(true);e.setHint(hint);e.setText(preset);parent.addView(e);return e;}
-    private void showAccountDialog(){LinearLayout body=new LinearLayout(this);body.setOrientation(LinearLayout.VERTICAL);body.setPadding(28,8,28,8);
-        EditText label=field("Название (например, Т Плюс)","",body);
-        EditText host=field("IMAP сервер (например, imap.mail.ru)","",body);
-        EditText port=field("SSL порт","993",body);port.setInputType(2);
-        EditText login=field("Почтовый адрес / логин","",body);
-        EditText password=field("Пароль приложения для IMAP","",body);password.setInputType(129);
-        new AlertDialog.Builder(this).setTitle("Новый IMAP-ящик").setView(body).setNegativeButton("Отмена",null)
-            .setPositiveButton("Сохранить",(dialog,which)->{
-                try{String h=host.getText().toString().trim(),l=login.getText().toString().trim(),p=password.getText().toString();
-                    if(h.isEmpty()||l.isEmpty()||p.isEmpty())throw new IllegalArgumentException("Заполните сервер, логин и пароль");
-                    accounts.add(new AccountStore.Account(label.getText().toString().trim().isEmpty()?l:label.getText().toString().trim(),h,Integer.parseInt(port.getText().toString()),l,p));
-                    store.save(accounts);refreshAccounts();
-                }catch(Exception e){Toast.makeText(this,"Ошибка: "+e.getMessage(),Toast.LENGTH_LONG).show();}
-            }).show();
-    }
-    private void removeDialog(){if(accounts.isEmpty())return;String[] choices=new String[accounts.size()];
-        for(int i=0;i<accounts.size();i++)choices[i]=accounts.get(i).title+" ("+accounts.get(i).login+")";
-        new AlertDialog.Builder(this).setTitle("Удалить подключение").setItems(choices,(d,index)->{
-            AccountStore.Account removed=accounts.remove(index);try{store.save(accounts);refreshAccounts();}catch(Exception e){accounts.add(index,removed);Toast.makeText(this,e.getMessage(),Toast.LENGTH_LONG).show();}
-        }).show();
-    }
-    private void loadMail(){if(accounts.isEmpty()){status.setText("Автоматический анализ писем только по ссылкам невозможен без доступа к почте. Ссылки можно открыть кнопками выше.");return;}
-        run.setEnabled(false);share.setEnabled(false);status.setText("Подключаемся к почте…");report.setText("");
-        saveSlots();Date date=selected.getTime();ArrayList<AccountStore.Account> snapshots=new ArrayList<>();
-        for(int i=0;i<5;i++)if(selectedSlots.get(i).isChecked()){int choice=accountSlots.get(i).getSelectedItemPosition();if(choice>0&&choice<=accounts.size()&&!snapshots.contains(accounts.get(choice-1)))snapshots.add(accounts.get(choice-1));}
-        if(snapshots.isEmpty()){status.setText("Выберите хотя бы один IMAP-ящик в активных слотах. Ссылка браузера сама по себе не открывает доступ к письмам.");run.setEnabled(true);return;}
-        executor.execute(()->{
-            ArrayList<ReportEngine.Item> all=new ArrayList<>();ArrayList<String> errors=new ArrayList<>();
-            for(AccountStore.Account a:snapshots){runOnUiThread(()->status.setText("Проверка: "+a.title));
-                try{all.addAll(MailReader.fetch(a,date));}catch(Exception e){errors.add(a.title+": "+e.getClass().getSimpleName()+" — "+e.getMessage());}
-            }
-            String result=ReportEngine.build(date,all,errors);
-            runOnUiThread(()->{lastReport=result;report.setText(result);status.setText("Готово. Получено писем: "+all.size()+"; ошибки ящиков: "+errors.size());run.setEnabled(true);share.setEnabled(true);});
+
+    private void addSlot(LinearLayout parent,int index,SharedPreferences prefs){
+        AccountStore.Account a=accounts.get(index);
+        TextView title=new TextView(this);
+        title.setText("\nЯщик "+(index+1));
+        title.setTextSize(18);
+        parent.addView(title);
+
+        CheckBox enabled=new CheckBox(this);
+        enabled.setText("Включить в отчёт");
+        enabled.setChecked(prefs.getBoolean("mail_selected_"+index,index==0));
+        parent.addView(enabled);
+        enabledSlots.add(enabled);
+
+        EditText email=new EditText(this);
+        email.setHint("Адрес почты Mail.ru");
+        email.setSingleLine(true);
+        email.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
+        email.setText(a.login);
+        parent.addView(email);
+        emailFields.add(email);
+
+        EditText password=new EditText(this);
+        password.setHint(a.secret.isEmpty()?"Пароль внешнего приложения Mail.ru":"Пароль сохранён • оставьте пустым, чтобы не менять");
+        password.setSingleLine(true);
+        password.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        parent.addView(password);
+        passwordFields.add(password);
+
+        Button browser=new Button(this);
+        browser.setText("Открыть Mail.ru в браузере");
+        parent.addView(browser);
+        browser.setOnClickListener(v->{
+            try{startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(WEBMAIL_URL)));}
+            catch(Exception e){Toast.makeText(this,"Не удалось открыть браузер",Toast.LENGTH_LONG).show();}
         });
     }
-    private void shareReport(){Intent i=new Intent(Intent.ACTION_SEND);i.setType("text/plain");i.putExtra(Intent.EXTRA_SUBJECT,"Оперативная сводка по Самаре — "+formatter.format(selected.getTime()));
-        i.putExtra(Intent.EXTRA_TEXT,lastReport);startActivity(Intent.createChooser(i,"Отправить отчет"));}
+
+    private void updateDate(){dayButton.setText("Дата писем: "+formatter.format(selected.getTime()));}
+
+    private void saveConfiguration() throws Exception {
+        SharedPreferences.Editor prefs=getSharedPreferences("slots",MODE_PRIVATE).edit();
+        ArrayList<AccountStore.Account> updated=new ArrayList<>();
+        for(int i=0;i<SLOT_COUNT;i++){
+            String email=emailFields.get(i).getText().toString().trim();
+            String enteredPassword=passwordFields.get(i).getText().toString();
+            AccountStore.Account previous=accounts.get(i);
+            String secret=(!enteredPassword.isEmpty())?enteredPassword:
+                (email.equalsIgnoreCase(previous.login)?previous.secret:"");
+            if(!email.isEmpty()&&(!email.contains("@")||email.contains(" "))){
+                throw new IllegalArgumentException("Неверный адрес в слоте "+(i+1));
+            }
+            updated.add(new AccountStore.Account("Ящик "+(i+1)+" ("+email+")",MAIL_HOST,MAIL_PORT,email,secret));
+            prefs.putBoolean("mail_selected_"+i,enabledSlots.get(i).isChecked());
+        }
+        store.save(updated);
+        if(!prefs.commit())throw new IllegalStateException("Не удалось записать выбор ящиков");
+        accounts.clear();
+        accounts.addAll(updated);
+        for(int i=0;i<SLOT_COUNT;i++){
+            passwordFields.get(i).setText("");
+            passwordFields.get(i).setHint(accounts.get(i).secret.isEmpty()?"Пароль внешнего приложения Mail.ru":"Пароль сохранён • оставьте пустым, чтобы не менять");
+        }
+    }
+
+    private ArrayList<AccountStore.Account> selectedAccounts(ArrayList<String> errors){
+        ArrayList<AccountStore.Account> result=new ArrayList<>();
+        for(int i=0;i<SLOT_COUNT;i++){
+            if(!enabledSlots.get(i).isChecked())continue;
+            AccountStore.Account a=accounts.get(i);
+            if(a.login.isEmpty()||a.secret.isEmpty()){
+                errors.add("Ящик "+(i+1)+": не указан адрес или пароль внешнего приложения");
+            } else result.add(a);
+        }
+        return result;
+    }
+
+    private void testConnections(){
+        try{saveConfiguration();}
+        catch(Exception e){status.setText("Проверьте настройки: "+e.getMessage());return;}
+        ArrayList<String> errors=new ArrayList<>();
+        ArrayList<AccountStore.Account> choices=selectedAccounts(errors);
+        if(choices.isEmpty()){status.setText("Нет готовых к проверке ящиков. "+String.join("; ",errors));return;}
+        test.setEnabled(false);run.setEnabled(false);
+        status.setText("Проверяем доступ к Mail.ru...");
+        executor.execute(()->{
+            ArrayList<String> result=new ArrayList<>();
+            for(AccountStore.Account a:choices){
+                try{MailReader.check(a);result.add("✓ "+a.login+": подключение работает");}
+                catch(javax.mail.AuthenticationFailedException e){result.add("✗ "+a.login+": отказ в авторизации. Используйте пароль для внешнего приложения Mail.ru.");}
+                catch(Exception e){result.add("✗ "+a.login+": ошибка соединения ("+e.getClass().getSimpleName()+")");}
+            }
+            result.addAll(errors);
+            runOnUiThread(()->{
+                status.setText(String.join("\n",result));
+                test.setEnabled(true);run.setEnabled(true);
+            });
+        });
+    }
+
+    private void loadMail(){
+        try{saveConfiguration();}
+        catch(Exception e){status.setText("Проверьте настройки: "+e.getMessage());return;}
+        ArrayList<String> errors=new ArrayList<>();
+        ArrayList<AccountStore.Account> choices=selectedAccounts(errors);
+        if(choices.isEmpty()){
+            status.setText("Нет выбранных и настроенных ящиков. "+String.join("; ",errors));
+            return;
+        }
+        run.setEnabled(false);test.setEnabled(false);share.setEnabled(false);
+        status.setText("Читаем входящие письма Mail.ru...");
+        report.setText("");
+        Date date=selected.getTime();
+        executor.execute(()->{
+            ArrayList<ReportEngine.Item> all=new ArrayList<>();
+            for(AccountStore.Account a:choices){
+                runOnUiThread(()->status.setText("Проверка "+a.login+"..."));
+                try{all.addAll(MailReader.fetch(a,date));}
+                catch(javax.mail.AuthenticationFailedException e){
+                    errors.add(a.login+": ошибка авторизации. Требуется пароль внешнего приложения.");
+                }
+                catch(Exception e){errors.add(a.login+": ошибка ("+e.getClass().getSimpleName()+")");}
+            }
+            String result=ReportEngine.build(date,all,errors);
+            runOnUiThread(()->{
+                lastReport=result;
+                report.setText(result);
+                status.setText("Готово. Проверено писем: "+all.size()+"; проблем: "+errors.size());
+                run.setEnabled(true);test.setEnabled(true);share.setEnabled(true);
+            });
+        });
+    }
+
+    private void shareReport(){
+        Intent i=new Intent(Intent.ACTION_SEND);
+        i.setType("text/plain");
+        i.putExtra(Intent.EXTRA_SUBJECT,"Оперативная сводка по Самаре — "+formatter.format(selected.getTime()));
+        i.putExtra(Intent.EXTRA_TEXT,lastReport);
+        startActivity(Intent.createChooser(i,"Отправить отчёт"));
+    }
+
     @Override protected void onDestroy(){executor.shutdownNow();super.onDestroy();}
 }

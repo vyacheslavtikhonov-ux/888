@@ -37,6 +37,7 @@ public class MainActivity extends Activity {
     private final ArrayList<EditText> passwordFields=new ArrayList<>();
     private AccountStore store;
     private TextView report,status;
+    private LinearLayout attachmentList;
     private Button run,share,dayButton,test;
     private String lastReport="";
     private final SimpleDateFormat formatter=new SimpleDateFormat("dd.MM.yyyy",new Locale("ru"));
@@ -102,6 +103,13 @@ public class MainActivity extends Activity {
         share.setEnabled(false);
         layout.addView(share);
         share.setOnClickListener(v->shareReport());
+        TextView filesTitle=new TextView(this);
+        filesTitle.setText("Вложения из выбранных писем");
+        filesTitle.setTextSize(18);
+        layout.addView(filesTitle);
+        attachmentList=new LinearLayout(this);
+        attachmentList.setOrientation(LinearLayout.VERTICAL);
+        layout.addView(attachmentList);
         report=new TextView(this);
         report.setTextIsSelectable(true);
         report.setTextSize(15);
@@ -225,14 +233,16 @@ public class MainActivity extends Activity {
         run.setEnabled(false);test.setEnabled(false);share.setEnabled(false);
         status.setText("Читаем входящие письма Mail.ru...");
         report.setText("");
+        attachmentList.removeAllViews();
         Date date=selected.getTime();
         executor.execute(()->{
             ArrayList<ReportEngine.Item> all=new ArrayList<>();
             ArrayList<SpreadsheetAttachmentReader.Operational> operations=new ArrayList<>();
             ArrayList<SpreadsheetAttachmentReader.Incident> incidents=new ArrayList<>();
+            ArrayList<MailReader.Attachment> attachments=new ArrayList<>();
             for(AccountStore.Account a:choices){
                 runOnUiThread(()->status.setText("Проверка "+a.login+"..."));
-                try{all.addAll(MailReader.fetch(a,date,operations,incidents,errors));}
+                try{all.addAll(MailReader.fetch(a,date,operations,incidents,errors,MailAttachmentProvider.directory(this),attachments));}
                 catch(javax.mail.AuthenticationFailedException e){
                     errors.add(a.login+": ошибка авторизации. Требуется пароль внешнего приложения.");
                 }
@@ -242,10 +252,39 @@ public class MainActivity extends Activity {
             runOnUiThread(()->{
                 lastReport=result;
                 report.setText(result);
+                showAttachments(attachments);
                 status.setText("Готово. Писем: "+all.size()+"; отключений: "+operations.size()+"; инцидентов: "+incidents.size()+"; проблем: "+errors.size());
                 run.setEnabled(true);test.setEnabled(true);share.setEnabled(true);
             });
         });
+    }
+
+    private void showAttachments(ArrayList<MailReader.Attachment> attachments){
+        attachmentList.removeAllViews();
+        if(attachments.isEmpty()){
+            TextView empty=new TextView(this);
+            empty.setText("Вложений не найдено.");
+            attachmentList.addView(empty);
+            return;
+        }
+        for(MailReader.Attachment attachment:attachments){
+            Button button=new Button(this);
+            button.setAllCaps(false);
+            button.setText((attachment.analyzed?"✓ Проанализировано: ":"Открыть: ")+attachment.filename+"\n"+attachment.mailbox);
+            attachmentList.addView(button);
+            button.setOnClickListener(v->{
+                try{
+                    Uri uri=MailAttachmentProvider.uriFor(attachment.file);
+                    Intent view=new Intent(Intent.ACTION_VIEW);
+                    view.setDataAndType(uri,"application/octet-stream");
+                    view.setType(getContentResolver().getType(uri));
+                    view.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    startActivity(Intent.createChooser(view,"Открыть вложение"));
+                }catch(Exception e){
+                    Toast.makeText(this,"Нет приложения для этого файла: "+e.getMessage(),Toast.LENGTH_LONG).show();
+                }
+            });
+        }
     }
 
     private void shareReport(){

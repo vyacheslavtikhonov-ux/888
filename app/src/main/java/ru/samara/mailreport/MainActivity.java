@@ -38,12 +38,12 @@ public class MainActivity extends Activity {
         try{accounts=store.read();}catch(Exception e){Toast.makeText(this,"Не удалось расшифровать сохраненные ящики",Toast.LENGTH_LONG).show();}
         ScrollView scroll=new ScrollView(this);LinearLayout layout=new LinearLayout(this);layout.setOrientation(LinearLayout.VERTICAL);layout.setPadding(28,32,28,32);scroll.addView(layout);
         TextView header=new TextView(this);header.setText("Самара — аварии и отключения");header.setTextSize(22);layout.addView(header);
-        TextView hint=new TextView(this);hint.setText("Сбор писем из нескольких IMAP-ящиков и предварительная оперативная сводка за выбранную дату. Данные обрабатываются на телефоне.");hint.setPadding(0,14,0,18);layout.addView(hint);
-        accountList=new TextView(this);layout.addView(accountList);
-        TextView slotTitle=new TextView(this);slotTitle.setText("\n5 ссылок на веб-почту: ссылка открывает почту в браузере, а доступ к письмам обеспечивается отдельно подключённым IMAP-ящиком.");layout.addView(slotTitle);
+        TextView hint=new TextView(this);hint.setText("Пять ссылок на веб-почту и сводка за выбранную дату. Для чтения закрытых писем необходима авторизация, одних ссылок недостаточно.");hint.setPadding(0,14,0,18);layout.addView(hint);
+
+        TextView slotTitle=new TextView(this);slotTitle.setText("\n5 ссылок на веб-почту. Открытие ссылок доступно; автоматическое чтение писем по одной ссылке не поддерживается.");layout.addView(slotTitle);
         for(int i=0;i<5;i++)addSlot(layout,i);
-        Button add=new Button(this);add.setText("Добавить почтовый ящик (IMAP)");layout.addView(add);add.setOnClickListener(v->showAccountDialog());
-        Button remove=new Button(this);remove.setText("Удалить ящик");layout.addView(remove);remove.setOnClickListener(v->removeDialog());
+
+
         dayButton=new Button(this);layout.addView(dayButton);updateDate();dayButton.setOnClickListener(v->new DatePickerDialog(this,(picker,y,m,d)->{
             selected.set(y,m,d);updateDate();},selected.get(Calendar.YEAR),selected.get(Calendar.MONTH),selected.get(Calendar.DATE)).show());
         run=new Button(this);run.setText("Сформировать отчет");layout.addView(run);run.setOnClickListener(v->loadMail());
@@ -68,7 +68,7 @@ public class MainActivity extends Activity {
     }
     private void updateDate(){dayButton.setText("Дата: "+formatter.format(selected.getTime()));}
     private void refreshAccounts(){StringBuilder s=new StringBuilder("Почтовые ящики ("+accounts.size()+"):\n");
-        for(AccountStore.Account a:accounts)s.append("• ").append(a.title).append(" — ").append(a.login).append("\n");accountList.setText(s);updateSlotAccounts();}
+        for(AccountStore.Account a:accounts)s.append("• ").append(a.title).append(" — ").append(a.login).append("\n");updateSlotAccounts();}
     private EditText field(String hint,String preset,LinearLayout parent){EditText e=new EditText(this);e.setSingleLine(true);e.setHint(hint);e.setText(preset);parent.addView(e);return e;}
     private void showAccountDialog(){LinearLayout body=new LinearLayout(this);body.setOrientation(LinearLayout.VERTICAL);body.setPadding(28,8,28,8);
         EditText label=field("Название (например, Т Плюс)","",body);
@@ -91,7 +91,7 @@ public class MainActivity extends Activity {
             AccountStore.Account removed=accounts.remove(index);try{store.save(accounts);refreshAccounts();}catch(Exception e){accounts.add(index,removed);Toast.makeText(this,e.getMessage(),Toast.LENGTH_LONG).show();}
         }).show();
     }
-    private void loadMail(){if(accounts.isEmpty()){status.setText("Сначала добавьте хотя бы один IMAP-ящик.");return;}
+    private void loadMail(){if(accounts.isEmpty()){status.setText("Автоматический анализ писем только по ссылкам невозможен без доступа к почте. Ссылки можно открыть кнопками выше.");return;}
         run.setEnabled(false);share.setEnabled(false);status.setText("Подключаемся к почте…");report.setText("");
         saveSlots();Date date=selected.getTime();ArrayList<AccountStore.Account> snapshots=new ArrayList<>();
         for(int i=0;i<5;i++)if(selectedSlots.get(i).isChecked()){int choice=accountSlots.get(i).getSelectedItemPosition();if(choice>0&&choice<=accounts.size()&&!snapshots.contains(accounts.get(choice-1)))snapshots.add(accounts.get(choice-1));}

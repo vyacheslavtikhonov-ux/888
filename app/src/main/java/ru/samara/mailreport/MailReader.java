@@ -15,6 +15,13 @@ import javax.mail.search.ComparisonTerm;
 import javax.mail.search.ReceivedDateTerm;
 final class MailReader {
     static ArrayList<ReportEngine.Item> fetch(AccountStore.Account account,Date day) throws Exception {
+        return fetch(account,day,new ArrayList<SpreadsheetAttachmentReader.Operational>(),
+            new ArrayList<SpreadsheetAttachmentReader.Incident>(),new ArrayList<String>());
+    }
+    static ArrayList<ReportEngine.Item> fetch(AccountStore.Account account,Date day,
+        ArrayList<SpreadsheetAttachmentReader.Operational> operations,
+        ArrayList<SpreadsheetAttachmentReader.Incident> incidents,
+        ArrayList<String> warnings) throws Exception {
         if(!account.host.matches("[a-zA-Z0-9.\\-]+")||account.port<1||account.port>65535)
             throw new IllegalArgumentException("Неверный IMAP сервер или порт");
         Properties p=new Properties();p.setProperty("mail.store.protocol","imaps");
@@ -39,6 +46,9 @@ final class MailReader {
                 String body="";try{body=extract(m,0);}catch(Exception ignored){body="[Не удалось извлечь тело письма]";}
                 if(body.length()>30000)body=body.substring(0,30000);
                 list.add(new ReportEngine.Item(account.title,subject,body,sender,m.getReceivedDate()));
+                try{
+                    collectAttachments(m,0,account.title,operations,incidents,warnings);
+                }catch(Exception e){warnings.add(account.title+": ошибка обхода вложений письма «"+subject+"» ("+e.getClass().getSimpleName()+")");}
             }
         } finally {if(folder!=null&&folder.isOpen())try{folder.close(false);}catch(Exception ignored){}
                    if(store.isConnected())try{store.close();}catch(Exception ignored){} }
@@ -64,4 +74,36 @@ final class MailReader {
         }
         return "";
     }
+    private static void collectAttachments(Part part,int depth,String mailbox,
+        ArrayList<SpreadsheetAttachmentReader.Operational> operations,
+        ArrayList<SpreadsheetAttachmentReader.Incident> incidents,
+        ArrayList<String> warnings) throws Exception {
+        if(depth>10)return;
+        String filename=part.getFileName();
+        if(filename!=null&&filename.toLowerCase(java.util.Locale.ROOT).endsWith(".xlsx")){
+            java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();
+            try(java.io.InputStream input=part.getInputStream()){
+                byte[] buffer=new byte[8192];int read;
+                while((read=input.read(buffer))!=-1){
+                    if(out.size()+read>18*1024*1024)throw new java.io.IOException("Превышен лимит XLSX 18 МБ");
+                    out.write(buffer,0,read);
+                }
+            }
+            try{
+                SpreadsheetAttachmentReader.Parsed parsed=SpreadsheetAttachmentReader.parse(out.toByteArray(),filename);
+                operations.addAll(parsed.operations);
+                incidents.addAll(parsed.incidents);
+                for(String warning:parsed.warnings)warnings.add(mailbox+": "+warning);
+            }catch(Exception e){warnings.add(mailbox+": ошибка XLSX «"+filename+"» ("+e.getClass().getSimpleName()+")");}
+            return;
+        }
+        if(part.isMimeType("multipart/*")){
+            Multipart multipart=(Multipart)part.getContent();
+            for(int i=0;i<multipart.getCount();i++)
+                collectAttachments(multipart.getBodyPart(i),depth+1,mailbox,operations,incidents,warnings);
+        }else if(part.isMimeType("message/rfc822")&&part.getContent() instanceof Part){
+            collectAttachments((Part)part.getContent(),depth+1,mailbox,operations,incidents,warnings);
+        }
+    }
+
 }

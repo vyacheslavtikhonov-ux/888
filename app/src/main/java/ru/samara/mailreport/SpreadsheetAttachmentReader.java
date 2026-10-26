@@ -30,13 +30,12 @@ final class SpreadsheetAttachmentReader {
   Parsed parsed=new Parsed();
   for(String s:sheets){
    ArrayList<String[]> rows=rows(zip.get(s),shared);
-   if(has(rows,"Кол-во откл")&&has(rows,"Причина отключения"))operational(rows,file,parsed);
-   else if(has(rows,"Характеристика объекта")&&has(rows,"Принятые меры"))incidents(rows,file,parsed);
+   AdaptiveSpreadsheetReader.scan(rows,file,parsed);
   }
   if(parsed.operations.isEmpty()&&parsed.incidents.isEmpty())parsed.warnings.add(file+": строки известных шаблонов не найдены");
   return parsed;
  }
- private static Map<String,byte[]> unzip(byte[] data) throws Exception {
+ static Map<String,byte[]> unzip(byte[] data) throws Exception {
   LinkedHashMap<String,byte[]> found=new LinkedHashMap<>();
   int total=0,entries=0;
   try(ZipInputStream z=new ZipInputStream(new ByteArrayInputStream(data))){
@@ -69,7 +68,7 @@ final class SpreadsheetAttachmentReader {
  private static String clean(String s){return (s==null?"":s).replace("_x000D_"," ").replace('\r',' ').replace('\n',' ').replaceAll("\\s+"," ").trim();}
  private static String str(String[] row,int i){return row==null||i<0||i>=row.length||row[i]==null?"":row[i];}
  private static int number(String x,int fallback){try{return Integer.parseInt(x);}catch(Exception e){return fallback;}}
- private static ArrayList<String> sharedStrings(byte[] data) throws Exception {
+ static ArrayList<String> sharedStrings(byte[] data) throws Exception {
   ArrayList<String> values=new ArrayList<>();if(data==null)return values;
   NodeList si=xml(data).getElementsByTagNameNS("*","si");
   for(int i=0;i<si.getLength();i++){
@@ -85,7 +84,7 @@ final class SpreadsheetAttachmentReader {
   for(int j=0;j<x.length()&&Character.isLetter(x.charAt(j));j++)col=col*26+Character.toUpperCase(x.charAt(j))-'A'+1;
   return col-1;
  }
- private static ArrayList<String[]> rows(byte[] data,ArrayList<String> shared) throws Exception {
+ static ArrayList<String[]> rows(byte[] data,ArrayList<String> shared) throws Exception {
   ArrayList<String[]> all=new ArrayList<>();
   if(data==null)return all;
   NodeList rows=xml(data).getElementsByTagNameNS("*","row");
@@ -121,11 +120,11 @@ final class SpreadsheetAttachmentReader {
    if(s!=null&&s.toLowerCase(Locale.ROOT).contains(search.toLowerCase(Locale.ROOT)))return true;
   return false;
  }
- private static Integer count(String s){
+ static Integer count(String s){
   try{if(s.isEmpty())return null;double n=Double.parseDouble(s.replace(',','.'));return n>=0&&n<=10000000&&n==Math.floor(n)?(int)n:null;}
   catch(Exception ex){return null;}
  }
- private static String service(String s){
+ static String service(String s){
   s=s.toLowerCase(Locale.ROOT);
   if(s.contains("горячее водоснабжение"))return "Горячее водоснабжение (ГВС)";
   if(s.contains("холодное водоснабжение"))return "Холодное водоснабжение (ХВС)";
@@ -134,7 +133,7 @@ final class SpreadsheetAttachmentReader {
   if(s.contains("газоснабжение"))return "Газоснабжение";
   return "";
  }
- private static String date(String d,String t){
+ static String date(String d,String t){
   if(d.isEmpty()&&t.isEmpty())return "";
   try{
    double v=Double.parseDouble(d.replace(',','.'));
@@ -149,7 +148,7 @@ final class SpreadsheetAttachmentReader {
   }catch(Exception ignored){}
   return (d+" "+t).trim();
  }
- private static String hours(String h){
+ static String hours(String h){
   try{double n=Double.parseDouble(h.replace(',','.'));return n>=0&&n<10000?(n==Math.floor(n)?(long)n+" ч":String.format(new Locale("ru"),"%.1f ч",n)):h;}
   catch(Exception ex){return h;}
  }

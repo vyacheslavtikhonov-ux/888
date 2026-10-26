@@ -17,9 +17,10 @@ final class AdaptiveSpreadsheetReader {
   {"characteristic","характеристика объекта","характеристика здания","техническая характеристика","тип объекта","характеристика"},
   {"measures","принятые меры","принятые действия","мероприятия","меры по устран","выполненные работы","устранение"},
   {"company","предприятие","исполнитель","ответственная организация","ресурсоснабжающая","организация"},
+  {"responsible","ответственный","ответственное лицо","контактный телефон","контакт"},
   {"unit","подразделение","участок организации","филиал"},
-  {"service","вид услуг","коммунальная услуга","вид коммунальной","ресурс","вид отключ","услуга"},
-  {"duration","кол-во час","количество час","продолжительность","перерыв","длительность","длител"},
+  {"service","вид услуг","коммунальная услуга","вид коммунальной","ресурс","вид откл","услуга"},
+  {"duration","кол-во час","количество час","продолжительность","перерыв","длительность","длител","продолжител"},
   {"start","начало работ","время начала","дата начала","начало отключ","начало"},
   {"end","окончание работ","время окончания","дата окончания","завершение работ","окончание","восстановление"},
   {"date","дата,","дата заявки","дата происшествия","дата инцидента","дата"},
@@ -125,11 +126,14 @@ final class AdaptiveSpreadsheetReader {
        item.source=file;item.address=field(row,headers,"address");
        item.municipality=field(row,headers,"municipality");
        item.reason=field(row,headers,"reason");
+       item.kind=incidentKind(item.reason);
+       item.description=incidentDescription(item.reason,item.kind);
        item.characteristic=field(row,headers,"characteristic");
        item.measures=field(row,headers,"measures");
        item.unit=approx(row,"unit","company",headers);
        String date=field(row,headers,"date"),time=field(row,headers,"time");
-       item.timestamp=(date+" "+time).trim();
+       item.timestamp=(extractDate(date)+" в "+readTime(time)).trim();
+       item.applicationNumber=extractApplication(date);
        if(item.municipality.isEmpty()&&samaraDistrict(field(row,headers,"district")))item.municipality="Самара";
        if(item.municipality.isEmpty())item.municipality=currentTown.isEmpty()?"Не указан":currentTown;
        if(!item.address.isEmpty()&&(!item.reason.isEmpty()||!item.characteristic.isEmpty()||!item.measures.isEmpty())){
@@ -148,6 +152,8 @@ final class AdaptiveSpreadsheetReader {
        if(item.service.isEmpty())item.service=currentService.isEmpty()?"Услуга не указана":currentService;
        item.reason=field(row,headers,"reason");
        item.company=field(row,headers,"company");
+       item.responsible=field(row,headers,"responsible");
+       item.outageType=field(row,headers,"service");
        item.houses=SpreadsheetAttachmentReader.count(field(row,headers,"houses"));
        item.people=SpreadsheetAttachmentReader.count(field(row,headers,"people"));
        item.duration=SpreadsheetAttachmentReader.hours(field(row,headers,"duration"));
@@ -175,6 +181,44 @@ final class AdaptiveSpreadsheetReader {
   }
   if(out.operations.size()==startOps&&out.incidents.size()==startInc)
     out.warnings.add(file+": структура таблиц не сопоставлена с полями отчёта. Требуется ручная проверка.");
+ }
+ private static String extractDate(String raw){
+  Matcher m=Pattern.compile("\\b\\d{1,2}\\.\\d{1,2}\\.\\d{4}\\b").matcher(raw);
+  if(m.find())return m.group();
+  return raw.replaceAll(",?\\s*№\\s*\\d+.*$","").trim();
+ }
+ private static String extractApplication(String raw){
+  Matcher m=Pattern.compile("(?iu)№\\s*([0-9]+)").matcher(raw);
+  return m.find()?"№ "+m.group(1):"";
+ }
+ private static String readTime(String raw){
+  try{
+   double n=Double.parseDouble(raw.replace(',','.'));
+   if(n>=0&&n<1){int mins=(int)Math.round(n*1440);return String.format(Locale.ROOT,"%02d:%02d",(mins/60)%24,mins%60);}
+  }catch(Exception ignored){}
+  return raw.trim();
+ }
+ private static String incidentKind(String reason){
+  String r=norm(reason);
+  if(r.startsWith("возгорание"))return "Возгорание";
+  if(r.startsWith("нарушение тб в гх"))return "Нарушение ТБ в ГХ";
+  if(r.startsWith("утечка"))return "Утечка газа";
+  if(r.startsWith("отравление"))return "Отравление";
+  if(r.startsWith("пожар"))return "Пожар";
+  if(r.startsWith("взрыв"))return "Взрыв";
+  int period=reason.indexOf('.');
+  if(period>1&&period<85)return reason.substring(0,period).trim();
+  int marker=r.indexOf(" обнаружено:");
+  if(marker>1&&marker<85)return reason.substring(0,marker).trim();
+  return "Не определён";
+ }
+ private static String incidentDescription(String reason,String kind){
+  if(reason==null)return "";
+  String t=reason.trim();
+  if(!"Не определён".equals(kind) && t.toLowerCase(Locale.ROOT).startsWith(kind.toLowerCase(Locale.ROOT))){
+   t=t.substring(kind.length()).replaceFirst("^[\\s.:;\\-]+","").trim();
+  }
+  return t.isEmpty()?reason.trim():t;
  }
  private static boolean nonData(String[] row,Map<String,Integer> headers){
   if(blankOrTotal(row))return true;

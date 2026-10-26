@@ -3,6 +3,11 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.DatePickerDialog;
 import android.content.Intent;
+import android.net.Uri;
+import android.content.SharedPreferences;
+import android.widget.CheckBox;
+import android.widget.Spinner;
+import android.widget.ArrayAdapter;
 import android.os.Bundle;
 import android.widget.Button;
 import android.widget.EditText;
@@ -24,6 +29,9 @@ public class MainActivity extends Activity {
     private AccountStore store;
     private TextView accountList,report,status;
     private Button run,share,dayButton;
+    private final ArrayList<CheckBox> selectedSlots=new ArrayList<>();
+    private final ArrayList<EditText> linkSlots=new ArrayList<>();
+    private final ArrayList<Spinner> accountSlots=new ArrayList<>();
     private String lastReport="";
     private final SimpleDateFormat formatter=new SimpleDateFormat("dd.MM.yyyy",new Locale("ru"));
     @Override public void onCreate(Bundle b){super.onCreate(b);store=new AccountStore(this);
@@ -32,7 +40,9 @@ public class MainActivity extends Activity {
         TextView header=new TextView(this);header.setText("Самара — аварии и отключения");header.setTextSize(22);layout.addView(header);
         TextView hint=new TextView(this);hint.setText("Сбор писем из нескольких IMAP-ящиков и предварительная оперативная сводка за выбранную дату. Данные обрабатываются на телефоне.");hint.setPadding(0,14,0,18);layout.addView(hint);
         accountList=new TextView(this);layout.addView(accountList);
-        Button add=new Button(this);add.setText("Добавить почтовый ящик");layout.addView(add);add.setOnClickListener(v->showAccountDialog());
+        TextView slotTitle=new TextView(this);slotTitle.setText("\n5 ссылок на веб-почту: ссылка открывает почту в браузере, а доступ к письмам обеспечивается отдельно подключённым IMAP-ящиком.");layout.addView(slotTitle);
+        for(int i=0;i<5;i++)addSlot(layout,i);
+        Button add=new Button(this);add.setText("Добавить почтовый ящик (IMAP)");layout.addView(add);add.setOnClickListener(v->showAccountDialog());
         Button remove=new Button(this);remove.setText("Удалить ящик");layout.addView(remove);remove.setOnClickListener(v->removeDialog());
         dayButton=new Button(this);layout.addView(dayButton);updateDate();dayButton.setOnClickListener(v->new DatePickerDialog(this,(picker,y,m,d)->{
             selected.set(y,m,d);updateDate();},selected.get(Calendar.YEAR),selected.get(Calendar.MONTH),selected.get(Calendar.DATE)).show());
@@ -42,9 +52,23 @@ public class MainActivity extends Activity {
         report=new TextView(this);report.setTextIsSelectable(true);report.setTextSize(15);layout.addView(report);
         setContentView(scroll);refreshAccounts();
     }
+    private void addSlot(LinearLayout parent,int index){
+        SharedPreferences sp=getSharedPreferences("slots",MODE_PRIVATE);
+        TextView t=new TextView(this);t.setText("Слот "+(index+1));parent.addView(t);
+        CheckBox check=new CheckBox(this);check.setText("Включить в отчёт");check.setChecked(sp.getBoolean("enabled"+index,true));parent.addView(check);selectedSlots.add(check);
+        EditText url=new EditText(this);url.setHint("https://mail.example.com");url.setSingleLine(true);url.setText(sp.getString("url"+index,""));parent.addView(url);linkSlots.add(url);
+        Spinner spinner=new Spinner(this);parent.addView(spinner);accountSlots.add(spinner);
+        Button open=new Button(this);open.setText("Открыть ссылку в браузере");parent.addView(open);
+        open.setOnClickListener(v->{String value=url.getText().toString().trim();try{Uri u=Uri.parse(value);if(!"https".equalsIgnoreCase(u.getScheme())||u.getHost()==null)throw new Exception("Нужна ссылка HTTPS");startActivity(new Intent(Intent.ACTION_VIEW,u));}catch(Exception e){Toast.makeText(this,"Недопустимая HTTPS-ссылка",Toast.LENGTH_LONG).show();}});
+        url.setOnFocusChangeListener((v,focused)->{if(!focused)saveSlots();});check.setOnCheckedChangeListener((v,checked)->saveSlots());
+    }
+    private void saveSlots(){SharedPreferences.Editor edit=getSharedPreferences("slots",MODE_PRIVATE).edit();for(int i=0;i<5;i++){edit.putBoolean("enabled"+i,selectedSlots.get(i).isChecked());edit.putString("url"+i,linkSlots.get(i).getText().toString().trim());edit.putInt("account"+i,accountSlots.get(i).getSelectedItemPosition());}edit.apply();}
+    private void updateSlotAccounts(){String[] names=new String[accounts.size()+1];names[0]="Не выбран (только браузер)";for(int i=0;i<accounts.size();i++)names[i+1]=accounts.get(i).title+" — "+accounts.get(i).login;
+        SharedPreferences sp=getSharedPreferences("slots",MODE_PRIVATE);for(int i=0;i<5;i++){final int index=i;Spinner spinner=accountSlots.get(i);ArrayAdapter<String> adapter=new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,names);spinner.setAdapter(adapter);spinner.setSelection(Math.min(sp.getInt("account"+i,0),names.length-1));spinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){public void onNothingSelected(android.widget.AdapterView<?> parent){}public void onItemSelected(android.widget.AdapterView<?> parent,android.view.View v,int position,long id){saveSlots();}});}
+    }
     private void updateDate(){dayButton.setText("Дата: "+formatter.format(selected.getTime()));}
     private void refreshAccounts(){StringBuilder s=new StringBuilder("Почтовые ящики ("+accounts.size()+"):\n");
-        for(AccountStore.Account a:accounts)s.append("• ").append(a.title).append(" — ").append(a.login).append("\n");accountList.setText(s);}
+        for(AccountStore.Account a:accounts)s.append("• ").append(a.title).append(" — ").append(a.login).append("\n");accountList.setText(s);updateSlotAccounts();}
     private EditText field(String hint,String preset,LinearLayout parent){EditText e=new EditText(this);e.setSingleLine(true);e.setHint(hint);e.setText(preset);parent.addView(e);return e;}
     private void showAccountDialog(){LinearLayout body=new LinearLayout(this);body.setOrientation(LinearLayout.VERTICAL);body.setPadding(28,8,28,8);
         EditText label=field("Название (например, Т Плюс)","",body);
@@ -67,9 +91,11 @@ public class MainActivity extends Activity {
             AccountStore.Account removed=accounts.remove(index);try{store.save(accounts);refreshAccounts();}catch(Exception e){accounts.add(index,removed);Toast.makeText(this,e.getMessage(),Toast.LENGTH_LONG).show();}
         }).show();
     }
-    private void loadMail(){if(accounts.isEmpty()){status.setText("Сначала добавьте хотя бы один почтовый ящик.");return;}
+    private void loadMail(){if(accounts.isEmpty()){status.setText("Сначала добавьте хотя бы один IMAP-ящик.");return;}
         run.setEnabled(false);share.setEnabled(false);status.setText("Подключаемся к почте…");report.setText("");
-        Date date=selected.getTime();ArrayList<AccountStore.Account> snapshots=new ArrayList<>(accounts);
+        saveSlots();Date date=selected.getTime();ArrayList<AccountStore.Account> snapshots=new ArrayList<>();
+        for(int i=0;i<5;i++)if(selectedSlots.get(i).isChecked()){int choice=accountSlots.get(i).getSelectedItemPosition();if(choice>0&&choice<=accounts.size()&&!snapshots.contains(accounts.get(choice-1)))snapshots.add(accounts.get(choice-1));}
+        if(snapshots.isEmpty()){status.setText("Выберите хотя бы один IMAP-ящик в активных слотах. Ссылка браузера сама по себе не открывает доступ к письмам.");run.setEnabled(true);return;}
         executor.execute(()->{
             ArrayList<ReportEngine.Item> all=new ArrayList<>();ArrayList<String> errors=new ArrayList<>();
             for(AccountStore.Account a:snapshots){runOnUiThread(()->status.setText("Проверка: "+a.title));

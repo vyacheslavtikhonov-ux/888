@@ -263,27 +263,69 @@ public class MainActivity extends Activity {
         attachmentList.removeAllViews();
         if(attachments.isEmpty()){
             TextView empty=new TextView(this);
-            empty.setText("Вложений не найдено.");
+            empty.setText("Вложений не найдено в письмах за выбранную дату.");
             attachmentList.addView(empty);
             return;
         }
+        TextView summary=new TextView(this);
+        int excelCount=0,analyzedCount=0;
+        for(MailReader.Attachment item:attachments){
+            if(item.excel)excelCount++;
+            if(item.analyzed)analyzedCount++;
+        }
+        summary.setText("Найдено вложений: "+attachments.size()+"; Excel: "+excelCount+
+            "; проанализировано: "+analyzedCount+". Для каждого файла доступны отдельные кнопки.");
+        attachmentList.addView(summary);
         for(MailReader.Attachment attachment:attachments){
-            Button button=new Button(this);
-            button.setAllCaps(false);
-            button.setText((attachment.analyzed?"✓ Проанализировано: ":"Открыть: ")+attachment.filename+"\n"+attachment.mailbox);
-            attachmentList.addView(button);
-            button.setOnClickListener(v->{
-                try{
-                    Uri uri=MailAttachmentProvider.uriFor(attachment.file);
-                    Intent view=new Intent(Intent.ACTION_VIEW);
-                    view.setDataAndType(uri,"application/octet-stream");
-                    view.setType(getContentResolver().getType(uri));
-                    view.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                    startActivity(Intent.createChooser(view,"Открыть вложение"));
-                }catch(Exception e){
-                    Toast.makeText(this,"Нет приложения для этого файла: "+e.getMessage(),Toast.LENGTH_LONG).show();
-                }
-            });
+            TextView title=new TextView(this);
+            title.setText("\n"+attachment.filename+"\n"+attachment.mailbox+"\n"+
+                (attachment.analyzed?"Распознано: отключений "+attachment.outages+
+                ", инцидентов "+attachment.incidents:
+                attachment.excel?"Excel: шаблон не распознан":"Формат без автоматического анализа"));
+            title.setTextIsSelectable(true);
+            attachmentList.addView(title);
+
+            Button analyze=new Button(this);
+            analyze.setAllCaps(false);
+            analyze.setText("Показать анализ файла");
+            analyze.setEnabled(attachment.excel);
+            attachmentList.addView(analyze);
+            analyze.setOnClickListener(v->showSingleFileAnalysis(attachment));
+
+            Button open=new Button(this);
+            open.setAllCaps(false);
+            open.setText("Открыть исходный файл");
+            attachmentList.addView(open);
+            open.setOnClickListener(v->openAttachment(attachment));
+        }
+    }
+
+    private void showSingleFileAnalysis(MailReader.Attachment attachment){
+        ScrollView scroll=new ScrollView(this);
+        TextView analysis=new TextView(this);
+        analysis.setPadding(24,18,24,18);
+        analysis.setTextIsSelectable(true);
+        analysis.setTextSize(14);
+        analysis.setText(attachment.analysis);
+        scroll.addView(analysis);
+        new AlertDialog.Builder(this)
+            .setTitle("Анализ: "+attachment.filename)
+            .setView(scroll)
+            .setPositiveButton("Закрыть",null)
+            .show();
+    }
+
+    private void openAttachment(MailReader.Attachment attachment){
+        try{
+            Uri uri=MailAttachmentProvider.uriFor(attachment.file);
+            Intent view=new Intent(Intent.ACTION_VIEW);
+            String mime=getContentResolver().getType(uri);
+            if(mime==null)mime="application/octet-stream";
+            view.setDataAndType(uri,mime);
+            view.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivity(Intent.createChooser(view,"Открыть исходный файл"));
+        }catch(Exception e){
+            Toast.makeText(this,"Нет приложения для открытия файла: "+e.getMessage(),Toast.LENGTH_LONG).show();
         }
     }
 

@@ -8,11 +8,11 @@ import org.w3c.dom.*;
 /** Read only XLSX cell data; no external Office libraries required. */
 final class SpreadsheetAttachmentReader {
  static final class Operational {
-  String source,municipality,district,service,address,reason,company,start,end,duration,status;
+  String source,municipality,district,service,address,reason,company,responsible,outageType,start,end,duration,status;
   Integer houses,people;
  }
  static final class Incident {
-  String source,municipality,address,timestamp,unit,characteristic,reason,measures;
+  String source,municipality,address,timestamp,applicationNumber,unit,characteristic,reason,kind,description,measures;
  }
  static final class Parsed {
   final ArrayList<Operational> operations=new ArrayList<>();
@@ -32,7 +32,7 @@ final class SpreadsheetAttachmentReader {
    ArrayList<String[]> rows=rows(zip.get(s),shared);
    AdaptiveSpreadsheetReader.scan(rows,file,parsed);
   }
-  if(parsed.operations.isEmpty()&&parsed.incidents.isEmpty())parsed.warnings.add(file+": строки известных шаблонов не найдены");
+  if(parsed.operations.isEmpty()&&parsed.incidents.isEmpty())parsed.warnings.add(file+": значимые данные не распознаны, проверьте структуру таблицы");
   return parsed;
  }
  static Map<String,byte[]> unzip(byte[] data) throws Exception {
@@ -131,6 +131,7 @@ final class SpreadsheetAttachmentReader {
   if(s.contains("теплоснабжение"))return "Теплоснабжение";
   if(s.contains("электроснабжение"))return "Электроснабжение";
   if(s.contains("газоснабжение"))return "Газоснабжение";
+  if(s.contains("водоотведение")||s.contains("канализация"))return "Водоотведение";
   return "";
  }
  static String date(String d,String t){

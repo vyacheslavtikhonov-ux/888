@@ -104,11 +104,15 @@ final class AdaptiveSpreadsheetReader {
    if(lower.contains("г. самары")||lower.contains("город самара")||lower.contains("по самаре"))samaraContext=true;
    if(lower.matches(".*\\b(самарская область|самарской области)\\b.*")&&!lower.contains("г. самары"))samaraContext=false;
    String section=service(v(row,0));
-   int filled=0;for(String cell:row)if(!v(row,Arrays.asList(row).indexOf(cell)).isEmpty())filled++;
+   int filled=0;for(String cell:row)if(cell!=null&&!cell.trim().isEmpty())filled++;
    if(!section.isEmpty() && (lower.length()<100 || filled<=2)){
     currentService=section; continue;
    }
    Map<String,Integer> candidate=columns(row);
+   if(operational && candidate.containsKey("start") && candidate.containsKey("end") && !candidate.containsKey("address")){
+    headers.put("start",candidate.get("start"));headers.put("end",candidate.get("end"));
+    continue;
+   }
    if(labelLine(row)&&(incidentColumns(candidate)||operationalColumns(candidate))){
     headers=candidate;incident=incidentColumns(candidate);
     operational=!incident;

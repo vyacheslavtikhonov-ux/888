@@ -68,14 +68,18 @@ final class ReportEngine {
                 out.append("\n").append(group.getKey()).append(" — записей: ").append(group.getValue().size())
                    .append(", домов: ").append(homes).append(missingHomes>0?" (без данных: "+missingHomes+")":"")
                    .append(", человек: ").append(people).append(missingPeople>0?" (без данных: "+missingPeople+")":"").append("\n");
+                int itemNumber=0;
                 for(SpreadsheetAttachmentReader.Operational o:group.getValue()){
-                    out.append("• ").append(o.address).append("\n")
+                    out.append(++itemNumber).append(". Район: ").append(empty(o.district)).append("\n")
+                       .append("  Объекты: ").append(o.address).append("\n")
                        .append("  Территория: ").append(o.municipality).append(", ").append(o.district).append("\n")
                        .append("  Причина: ").append(empty(o.reason)).append("\n")
+                       .append("  Вид отключения: ").append(empty(o.outageType)).append("\n")
+                       .append("  Ответственный: ").append(empty(o.responsible)).append("\n")
                        .append("  Домов: ").append(o.houses==null?"не указано":o.houses)
                        .append("; человек: ").append(o.people==null?"не указано":o.people).append("\n")
+                       .append("  Длительность: с ").append(empty(o.start)).append(" по ").append(empty(o.end)).append("\n")
                        .append("  Перерыв: ").append(empty(o.duration)).append("; статус: ").append(empty(o.status)).append("\n")
-                       .append("  Начало: ").append(empty(o.start)).append("; окончание: ").append(empty(o.end)).append("\n")
                        .append("  Предприятие: ").append(empty(o.company)).append("; файл: ").append(o.source).append("\n");
                 }
             }
@@ -85,12 +89,14 @@ final class ReportEngine {
                 if(SpreadsheetAttachmentReader.isSamara(o.municipality)!=samara)continue;
                 String key="incident|"+o.source+"|"+o.municipality+"|"+o.address+"|"+o.timestamp;
                 if(!seen.add(key))continue;
-                out.append(++index).append(". ").append(o.municipality).append(", ").append(empty(o.address))
-                   .append("\n  Дата / заявка: ").append(empty(o.timestamp))
-                   .append("\n  Причина и описание: ").append(empty(o.reason))
-                   .append("\n  Характеристика объекта: ").append(empty(o.characteristic))
-                   .append("\n  Принятые меры: ").append(empty(o.measures))
+                out.append(++index).append(". Вид инцидента: ").append(empty(o.kind))
+                   .append("\n  Дата и время: ").append(empty(o.timestamp))
+                   .append(o.applicationNumber==null||o.applicationNumber.isEmpty()?"":"; заявка "+o.applicationNumber)
+                   .append("\n  Адрес: ").append(empty(o.municipality)).append(", ").append(empty(o.address))
                    .append("\n  Подразделение: ").append(empty(o.unit))
+                   .append("\n  Характеристики объекта: ").append(empty(o.characteristic))
+                   .append("\n  Обнаружено: ").append(empty(o.description))
+                   .append("\n  Принятые меры: ").append(empty(o.measures))
                    .append("\n  Файл: ").append(o.source).append("\n");
             }
             if(index==0)out.append("Инцидентов в приложенных таблицах нет.\n");

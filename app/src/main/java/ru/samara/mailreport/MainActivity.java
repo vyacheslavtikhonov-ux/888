@@ -24,7 +24,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
-    private static final int SLOT_COUNT=5;
+    private static final int SLOT_COUNT=2;
     private static final String MAIL_HOST="imap.mail.ru";
     private static final int MAIL_PORT=993;
     private static final String WEBMAIL_URL="https://e.mail.ru/";
@@ -63,7 +63,7 @@ public class MainActivity extends Activity {
         header.setTextSize(22);
         layout.addView(header);
         TextView hint=new TextView(this);
-        hint.setText("5 ящиков Mail.ru. Для отчёта выбирайте нужные ящики галочками. Сервер imap.mail.ru, порт 993, шифрование SSL/TLS уже настроены. Введите для каждого ящика только пароль для внешнего приложения Mail.ru: обычный пароль не подходит. Он хранится зашифрованным на телефоне. Ссылки открывают почту в браузере, чтение для отчёта выполняется по защищённому IMAP.");
+        hint.setText("Два ящика Mail.ru с раздельными браузерными сессиями. Кнопка «Проверка работы почты» открывает сайт для ручного входа, в том числе при запросе кода или капчи. Для автоматического отчёта о письмах используется IMAP (imap.mail.ru:993, SSL/TLS), которому нужен отдельный пароль внешнего приложения Mail.ru. Обычный пароль сайта здесь вводить не нужно.");
         hint.setPadding(0,14,0,18);
         layout.addView(hint);
 
@@ -71,7 +71,7 @@ public class MainActivity extends Activity {
         for(int i=0;i<SLOT_COUNT;i++)addSlot(layout,i,prefs);
 
         Button save=new Button(this);
-        save.setText("Сохранить 5 ящиков");
+        save.setText("Сохранить 2 ящика");
         layout.addView(save);
         save.setOnClickListener(v->{
             try{saveConfiguration();status.setText("Настройки сохранены на телефоне.");}
@@ -85,7 +85,7 @@ public class MainActivity extends Activity {
         },selected.get(Calendar.YEAR),selected.get(Calendar.MONTH),selected.get(Calendar.DATE)).show());
 
         test=new Button(this);
-        test.setText("Проверить подключение выбранных ящиков");
+        test.setText("Проверить IMAP выбранных ящиков");
         layout.addView(test);
         test.setOnClickListener(v->testConnections());
 
@@ -131,18 +131,24 @@ public class MainActivity extends Activity {
         emailFields.add(email);
 
         EditText password=new EditText(this);
-        password.setHint(a.secret.isEmpty()?"Пароль внешнего приложения Mail.ru":"Пароль сохранён • оставьте пустым, чтобы не менять");
+        password.setHint(a.secret.isEmpty()?"Пароль для IMAP (НЕ пароль сайта)":"Пароль IMAP сохранён • оставьте пустым, чтобы не менять");
         password.setSingleLine(true);
         password.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);
         parent.addView(password);
         passwordFields.add(password);
 
         Button browser=new Button(this);
-        browser.setText("Открыть Mail.ru в браузере");
+        browser.setText("Проверка работы почты №"+(index+1)+" — открыть Mail.ru");
         parent.addView(browser);
         browser.setOnClickListener(v->{
-            try{startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(WEBMAIL_URL)));}
-            catch(Exception e){Toast.makeText(this,"Не удалось открыть браузер",Toast.LENGTH_LONG).show();}
+            try{
+                saveConfiguration();
+                Intent intent=new Intent(this,index==0?MailBrowserOneActivity.class:MailBrowserTwoActivity.class);
+                intent.putExtra("mail_address",accounts.get(index).login);
+                startActivity(intent);
+            }catch(Exception e){
+                Toast.makeText(this,"Не удалось открыть почту: "+e.getMessage(),Toast.LENGTH_LONG).show();
+            }
         });
     }
 
@@ -169,7 +175,7 @@ public class MainActivity extends Activity {
         accounts.addAll(updated);
         for(int i=0;i<SLOT_COUNT;i++){
             passwordFields.get(i).setText("");
-            passwordFields.get(i).setHint(accounts.get(i).secret.isEmpty()?"Пароль внешнего приложения Mail.ru":"Пароль сохранён • оставьте пустым, чтобы не менять");
+            passwordFields.get(i).setHint(accounts.get(i).secret.isEmpty()?"Пароль для IMAP (НЕ пароль сайта)":"Пароль IMAP сохранён • оставьте пустым, чтобы не менять");
         }
     }
 

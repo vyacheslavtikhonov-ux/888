@@ -289,8 +289,9 @@ public class MainActivity extends Activity {
 
             Button analyze=new Button(this);
             analyze.setAllCaps(false);
-            analyze.setText("Показать анализ файла");
-            analyze.setEnabled(attachment.excel);
+            boolean supportedType=attachment.excel&&!SpreadsheetTypeClassifier.OTHER.equals(attachment.type);
+            analyze.setText(supportedType?"Показать анализ файла":"Иной тип — не анализируется");
+            analyze.setEnabled(supportedType);
             attachmentList.addView(analyze);
             analyze.setOnClickListener(v->showSingleFileAnalysis(attachment));
 

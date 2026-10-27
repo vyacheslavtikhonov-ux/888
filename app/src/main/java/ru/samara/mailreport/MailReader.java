@@ -129,6 +129,7 @@ final class MailReader {
                     try{
                         SpreadsheetAttachmentReader.Parsed parsed=SpreadsheetAttachmentReader.parse(bytes,original);
                         fileType=parsed.type;
+                        String cellPreview=String.join("\n",parsed.previews);
                         for(String message:parsed.warnings)warnings.add(mailbox+": "+message);
                         if(!SpreadsheetTypeClassifier.OTHER.equals(parsed.type)){
                             operations.addAll(parsed.operations);
@@ -139,11 +140,11 @@ final class MailReader {
                             analysis="Тип файла: "+SpreadsheetTypeClassifier.label(parsed.type)+"\nФайл: "+original+
                                 "\nЯщик: "+mailbox+"\nТема письма: "+subject+"\n\n"+
                                 ReportEngine.build(day,new ArrayList<ReportEngine.Item>(),parsed.operations,parsed.incidents,
-                                    new ArrayList<String>(parsed.warnings));
+                                    new ArrayList<String>(parsed.warnings))+"\n\nПРОСМОТР ЯЧЕЕК EXCEL\n"+cellPreview;
                         }else{
                             analysis="Тип файла: Иной тип файла\nФайл: "+original+
                                 "\nПричина: "+parsed.classificationReason+
-                                "\nСодержимое не анализировалось и не включено в общий отчёт.";
+                                "\nСодержимое не анализировалось и не включено в общий отчёт.\n\nПРОСМОТР ЯЧЕЕК EXCEL\n"+cellPreview;
                         }
                     }catch(Exception e){
                         String reason="Не удалось разобрать XLSX «"+original+"»: "+e.getClass().getSimpleName();

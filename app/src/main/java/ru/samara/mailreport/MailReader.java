@@ -16,12 +16,12 @@ import javax.mail.search.ReceivedDateTerm;
 final class MailReader {
     static final class Attachment {
         final java.io.File file;
-        final String filename,mailbox,subject,analysis;
+        final String filename,mailbox,subject,analysis,type;
         final boolean analyzed,excel;
         final int outages,incidents;
-        Attachment(java.io.File f,String name,String from,String sub,boolean excelFile,
+        Attachment(java.io.File f,String name,String from,String sub,boolean excelFile,String fileType,
                    boolean ok,int outagesCount,int incidentsCount,String detail){
-            file=f;filename=name;mailbox=from;subject=sub;
+            file=f;filename=name;mailbox=from;subject=sub;type=fileType;
             excel=excelFile;analyzed=ok;outages=outagesCount;incidents=incidentsCount;analysis=detail;
         }
     }
@@ -122,30 +122,41 @@ final class MailReader {
                 }catch(Exception e){if(destination!=null)destination.delete();throw e;}
                 boolean analyzed=false;
                 int outages=0,incidentsCount=0;
-                String analysis="Анализ для этого формата не предусмотрен. Автоматически обрабатываются XLSX-файлы двух поддерживаемых шаблонов.";
+                String analysis="Анализ не выполнялся.";
+                String fileType=SpreadsheetTypeClassifier.OTHER;
                 if(xlsx){
                     byte[] bytes=destination!=null?java.nio.file.Files.readAllBytes(destination.toPath()):memory.toByteArray();
                     try{
                         SpreadsheetAttachmentReader.Parsed parsed=SpreadsheetAttachmentReader.parse(bytes,original);
-                        operations.addAll(parsed.operations);
-                        incidents.addAll(parsed.incidents);
+                        fileType=parsed.type;
                         for(String message:parsed.warnings)warnings.add(mailbox+": "+message);
-                        outages=parsed.operations.size();
-                        incidentsCount=parsed.incidents.size();
-                        analyzed=outages>0||incidentsCount>0;
-                        analysis="Файл: "+original+"\nЯщик: "+mailbox+"\nТема письма: "+subject+"\n\n"+
-                            ReportEngine.build(day,new ArrayList<ReportEngine.Item>(),parsed.operations,parsed.incidents,
-                                new ArrayList<String>(parsed.warnings));
+                        if(!SpreadsheetTypeClassifier.OTHER.equals(parsed.type)){
+                            operations.addAll(parsed.operations);
+                            incidents.addAll(parsed.incidents);
+                            outages=parsed.operations.size();
+                            incidentsCount=parsed.incidents.size();
+                            analyzed=outages>0||incidentsCount>0;
+                            analysis="Тип файла: "+SpreadsheetTypeClassifier.label(parsed.type)+"\nФайл: "+original+
+                                "\nЯщик: "+mailbox+"\nТема письма: "+subject+"\n\n"+
+                                ReportEngine.build(day,new ArrayList<ReportEngine.Item>(),parsed.operations,parsed.incidents,
+                                    new ArrayList<String>(parsed.warnings));
+                        }else{
+                            analysis="Тип файла: Иной тип файла\nФайл: "+original+
+                                "\nПричина: "+parsed.classificationReason+
+                                "\nСодержимое не анализировалось и не включено в общий отчёт.";
+                        }
                     }catch(Exception e){
                         String reason="Не удалось разобрать XLSX «"+original+"»: "+e.getClass().getSimpleName();
                         warnings.add(mailbox+": "+reason);
                         analysis=reason+"\nОткройте исходный файл и проверьте формат.";
                     }
                 }else{
-                    warnings.add(mailbox+": вложение «"+original+"» сохранено для открытия, но автоматический разбор этого формата пока не поддерживается");
+                    fileType=SpreadsheetTypeClassifier.OTHER;
+                    analysis="Иной тип файла: формат не XLSX. Содержимое не анализировалось.";
+                    warnings.add(mailbox+": вложение «"+original+"» помечено как иной тип и не анализировалось");
                 }
                 if(destination!=null)attachments.add(new Attachment(destination,original,mailbox,subject,
-                    xlsx,analyzed,outages,incidentsCount,analysis));
+                    xlsx,fileType,analyzed,outages,incidentsCount,analysis));
             }catch(Exception e){warnings.add(mailbox+": ошибка сохранения вложения «"+filename+"»: "+e.getClass().getSimpleName());}
             return;
         }

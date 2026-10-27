@@ -49,8 +49,10 @@ final class AdaptiveSpreadsheetReader {
  private static Map<String,Integer> columns(String[] row){
   Map<String,Integer> map=new LinkedHashMap<>();
   for(int i=0;i<row.length;i++){
-   String key=type(v(row,i));
-   if(!key.isEmpty()&&!map.containsKey(key))map.put(key,i);
+   String cell=v(row,i);
+   String key=type(cell);
+   if(!key.isEmpty()&&(!map.containsKey(key) ||
+      ("duration".equals(key)&&norm(cell).contains("кол-во час"))))map.put(key,i);
   }
   return map;
  }

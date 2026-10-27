@@ -279,9 +279,11 @@ public class MainActivity extends Activity {
         for(MailReader.Attachment attachment:attachments){
             TextView title=new TextView(this);
             title.setText("\n"+attachment.filename+"\n"+attachment.mailbox+"\n"+
+                "Тип: "+SpreadsheetTypeClassifier.label(attachment.type)+"\n"+
                 (attachment.analyzed?"Распознано: отключений "+attachment.outages+
                 ", инцидентов "+attachment.incidents:
-                attachment.excel?"Excel: шаблон не распознан":"Формат без автоматического анализа"));
+                SpreadsheetTypeClassifier.OTHER.equals(attachment.type)?"Не анализировался":
+                attachment.excel?"Тип определён, записи не извлечены":"Формат не поддерживается"));
             title.setTextIsSelectable(true);
             attachmentList.addView(title);
 

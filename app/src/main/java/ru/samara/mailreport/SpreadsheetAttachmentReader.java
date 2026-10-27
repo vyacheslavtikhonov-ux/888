@@ -18,6 +18,8 @@ final class SpreadsheetAttachmentReader {
   final ArrayList<Operational> operations=new ArrayList<>();
   final ArrayList<Incident> incidents=new ArrayList<>();
   final ArrayList<String> warnings=new ArrayList<>();
+  String type=SpreadsheetTypeClassifier.OTHER;
+  String classificationReason="";
  }
  private static final int LIMIT=18*1024*1024;
  static Parsed parse(byte[] raw,String file) throws Exception {
@@ -28,11 +30,31 @@ final class SpreadsheetAttachmentReader {
   for(String k:zip.keySet())if(k.matches("xl/worksheets/sheet[0-9]+\\.xml"))sheets.add(k);
   Collections.sort(sheets);
   Parsed parsed=new Parsed();
-  for(String s:sheets){
-   ArrayList<String[]> rows=rows(zip.get(s),shared);
-   AdaptiveSpreadsheetReader.scan(rows,file,parsed);
+  ArrayList<ArrayList<String[]>> sheetRows=new ArrayList<>();
+  ArrayList<String> sheetNames=new ArrayList<>();
+  ArrayList<String[]> combined=new ArrayList<>();
+  for(String sheet:sheets){
+   ArrayList<String[]> data=rows(zip.get(sheet),shared);
+   sheetRows.add(data);sheetNames.add(sheet);combined.addAll(data);
   }
-  if(parsed.operations.isEmpty()&&parsed.incidents.isEmpty())parsed.warnings.add(file+": значимые данные не распознаны, проверьте структуру таблицы");
+  SpreadsheetTypeClassifier.Result bookType=SpreadsheetTypeClassifier.classify(combined);
+  parsed.type=bookType.type;
+  parsed.classificationReason=bookType.reason;
+  if(SpreadsheetTypeClassifier.OTHER.equals(parsed.type)){
+   parsed.warnings.add(file+": Иной тип файла — "+bookType.reason+". Содержимое не анализировалось.");
+   return parsed;
+  }
+  for(int i=0;i<sheetRows.size();i++){
+   ArrayList<String[]> data=sheetRows.get(i);
+   SpreadsheetTypeClassifier.Result sheetType=SpreadsheetTypeClassifier.classify(data);
+   if(!parsed.type.equals(sheetType.type))continue;
+   int oldOps=parsed.operations.size(),oldInc=parsed.incidents.size();
+   AdaptiveSpreadsheetReader.scan(data,file,parsed);
+   if(SpreadsheetTypeClassifier.INCIDENTS.equals(parsed.type))parsed.operations.subList(oldOps,parsed.operations.size()).clear();
+   else parsed.incidents.subList(oldInc,parsed.incidents.size()).clear();
+  }
+  if(parsed.operations.isEmpty()&&parsed.incidents.isEmpty())
+   parsed.warnings.add(file+": тип распознан как "+SpreadsheetTypeClassifier.label(parsed.type)+", но записи не извлечены.");
   return parsed;
  }
  static Map<String,byte[]> unzip(byte[] data) throws Exception {

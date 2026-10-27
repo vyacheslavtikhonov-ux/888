@@ -18,10 +18,29 @@ final class SpreadsheetAttachmentReader {
   final ArrayList<Operational> operations=new ArrayList<>();
   final ArrayList<Incident> incidents=new ArrayList<>();
   final ArrayList<String> warnings=new ArrayList<>();
+  final ArrayList<String> previews=new ArrayList<>();
   String type=SpreadsheetTypeClassifier.OTHER;
   String classificationReason="";
  }
  private static final int LIMIT=18*1024*1024;
+ private static boolean containsLabel(ArrayList<String[]> rows,String label){
+  for(String[] row:rows)for(String cell:row)if(cell!=null&&cell.toLowerCase(Locale.ROOT).contains(label))return true;
+  return false;
+ }
+ private static String preview(String sheet,ArrayList<String[]> rows){
+  StringBuilder b=new StringBuilder("Лист: "+sheet+"\n");
+  int shown=0;
+  for(int i=0;i<rows.size()&&shown<65;i++){
+   StringBuilder line=new StringBuilder();
+   for(int j=0;j<rows.get(i).length;j++){
+    String cell=rows.get(i)[j];
+    if(cell!=null&&!cell.trim().isEmpty())line.append(j+1).append(": ").append(cell).append(" | ");
+   }
+   if(line.length()>0){b.append(i+1).append(": ").append(line).append("\n");shown++;}
+  }
+  return b.toString();
+ }
+
  static Parsed parse(byte[] raw,String file) throws Exception {
   if(raw==null||raw.length==0||raw.length>LIMIT)throw new IOException("Слишком большое или пустое XLSX-вложение");
   Map<String,byte[]> zip=unzip(raw);
@@ -36,10 +55,15 @@ final class SpreadsheetAttachmentReader {
   for(String sheet:sheets){
    ArrayList<String[]> data=rows(zip.get(sheet),shared);
    sheetRows.add(data);sheetNames.add(sheet);combined.addAll(data);
+   parsed.previews.add(preview(sheet,data));
   }
   SpreadsheetTypeClassifier.Result bookType=SpreadsheetTypeClassifier.classify(combined);
   parsed.type=bookType.type;
   parsed.classificationReason=bookType.reason;
+  if(SpreadsheetTypeClassifier.OTHER.equals(parsed.type)){
+   if(containsLabel(combined,"вид инцидента"))parsed.type=SpreadsheetTypeClassifier.INCIDENTS;
+   else if(containsLabel(combined,"объекты")&&containsLabel(combined,"район"))parsed.type=SpreadsheetTypeClassifier.OPERATIONAL;
+  }
   if(SpreadsheetTypeClassifier.OTHER.equals(parsed.type)){
    parsed.warnings.add(file+": Иной тип файла — "+bookType.reason+". Содержимое не анализировалось.");
    return parsed;
@@ -47,9 +71,11 @@ final class SpreadsheetAttachmentReader {
   for(int i=0;i<sheetRows.size();i++){
    ArrayList<String[]> data=sheetRows.get(i);
    SpreadsheetTypeClassifier.Result sheetType=SpreadsheetTypeClassifier.classify(data);
-   if(!parsed.type.equals(sheetType.type))continue;
+   if(!parsed.type.equals(sheetType.type) && !containsLabel(data,SpreadsheetTypeClassifier.INCIDENTS.equals(parsed.type)?"вид инцидента":"объекты"))continue;
    int oldOps=parsed.operations.size(),oldInc=parsed.incidents.size();
-   AdaptiveSpreadsheetReader.scan(data,file,parsed);
+   if(SpreadsheetTypeClassifier.INCIDENTS.equals(parsed.type))SpreadsheetBlockParser.parseIncidents(data,file,parsed);
+   else SpreadsheetBlockParser.parseOperational(data,file,parsed);
+   if(parsed.operations.size()==oldOps && parsed.incidents.size()==oldInc)AdaptiveSpreadsheetReader.scan(data,file,parsed);
    if(SpreadsheetTypeClassifier.INCIDENTS.equals(parsed.type))parsed.operations.subList(oldOps,parsed.operations.size()).clear();
    else parsed.incidents.subList(oldInc,parsed.incidents.size()).clear();
   }
@@ -114,7 +140,7 @@ final class SpreadsheetAttachmentReader {
    Element row=(Element)rows.item(i);
    int line=number(row.getAttribute("r"),all.size()+1);
    if(line<1||line>15000)continue;
-   String[] values=new String[18];
+   String[] values=new String[64];
    NodeList children=row.getChildNodes();
    for(int k=0;k<children.getLength();k++){
     if(!(children.item(k) instanceof Element)||!"c".equals(children.item(k).getLocalName()))continue;
@@ -132,7 +158,7 @@ final class SpreadsheetAttachmentReader {
     }
     values[col]=clean(v);
    }
-   while(all.size()<line-1)all.add(new String[18]);
+   while(all.size()<line-1)all.add(new String[64]);
    if(all.size()==line-1)all.add(values);else all.set(line-1,values);
   }
   return all;
